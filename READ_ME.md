@@ -1,5 +1,6 @@
 ## Prediction Assignment writeup gh-pages hosting on github
 
-author: Petac
-html on gh-pages
+author: Petac  
+
+Trying to get html on gh-pages
 
