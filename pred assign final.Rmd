@@ -1,0 +1,149 @@
+---
+title: "Prediction Assignment Writeup"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output: html_document
+---
+
+```{r setup, include=TRUE, echo=FALSE, results='hide',warning=FALSE,message=FALSE}
+require(knitr)
+require(datasets)
+require(ggplot2)
+require(plyr)
+require(dplyr)
+require(lubridate)
+require(GGally)
+require(car)
+require(caret)
+require(randomForest)
+require(gbm)
+require(splines)
+require(parallel)
+require(Hmisc)
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/Bruger/PAC/Documents/R/Machine learning")
+```
+
+## Intro
+
+The goal of the project is to build a model which can predict in which manner an exercise was done. The model must be build with cross validation. 
+  
+Cross validation gives a good estimate for the out of sample error. A final estimation of the prediction accuracy of the model will be done on the testingset.
+
+## Preparation of the dataset
+
+The dataset is loaded. And as the first thing it is to split into a training set and a testing set using createDataPartition. 
+
+```{r}
+training<-read.csv("pml-training.csv", sep=",",na.strings = c(NA,"#DIV/0!"))
+
+## splitting the dataset
+set.seed(120)
+inTrain<-createDataPartition(training$classe, p=2/3,list=FALSE)
+training2<-training[inTrain,]
+testing<-training[-inTrain,] 
+```
+
+## Subsetting the data.frame
+  
+Inspection of the training data.frame shows that several columns contains many NAs. Imputing too many NAs will be impossible. So the training data.frame is subsetted to exclude columns with more than approx. 50% NAs. Similarly the first 7 columns are excluded from the dataset.
+
+```{r,eval=FALSE}
+## subsetting columns to exclude NA and columns 1:7
+naCells<-is.na(training2)
+naColumns<-apply(naCells,2,sum)
+naColnumbers<-which(naColumns>6500)
+training3<-training2[,-c(1:7,naColnumbers)]
+```
+
+## Removing highly correlated variables  
+
+The final columns for modelling is choosen by removing highly correlated variables. 
+Additionally no nearZeroVar was found.
+  
+```{r, eval=FALSE}
+## removing highly correlated variables 
+corvar <- cor(training3[,-53])
+corvar1 <- findCorrelation(corvar, cutoff=0.9,names=TRUE) 
+corvar2<-which(colnames(training3) %in% corvar1)
+training4 <- training3[,-corvar2]
+```
+  
+The correlation cutoffs tested for the various models were (0.8 and 0.9). Optimum was found to be 0.9.
+
+## Small sub training set for optimizing model parameters
+
+For optimizing the modelling parameters a small subset of data is selected. 
+
+```{r,eval=FALSE}
+set.seed(120)
+optModel<-createDataPartition(training4$classe, p=0.025,list=FALSE)
+training5<-training4[optModel,]
+```
+  
+## Optimizing model fitting
+
+Modelparameters were optimized on the training5 subset. Modelfitting was done with each of the methods "gbm" and "rf" and has been tested with:  
+1. No preprocessing  
+2. Preprocessing = "center and scale"   
+3. Preprocessing ="pca" (only gbm)  
+
+The tuneLength defaultvalue is used. Cross-validation is set as a parameter in train control. 10 folds are used. Accuracy is estimated on the fold not included in each of the modelbuildings.
+
+The best result was obtained with random forest and preprocessing = "center and scale".
+
+## Final model building
+
+The final model was build on the data.frame training4, with the parameters found during optimization.
+  
+```{r, eval=FALSE}
+## setting train control
+train_control<- trainControl(method="cv", number=10, savePredictions = TRUE)
+##building models
+set.seed(120)
+rf<-train(classe~., data=training4, trControl=train_control, method="rf", preProcess=c("center","scale"),tuneLength=10)
+print(rf)
+```
+
+```{r,echo=FALSE}
+## My knit keeps crashing when I run it with the caret train function.
+## I do the knit myself from the global environment 
+## rmarkdown::render("pred assign final.Rmd",output_format = "html_document",output_file = "Pred_Assign_Writeup.html", envir = globalenv())
+```
+
+```{r}
+rfImp <- varImp(rf, scale = FALSE)
+
+```
+
+## Out of sample error 
+
+The out of sample error determined on the testing set is. 
+
+```{r}
+## Predicting values
+CM<-confusionMatrix(testing$classe,predict(rf,testing))
+print(CM)
+```
+
+## Conclusion
+```{r,echo=FALSE}
+print(paste("The estimated accuracy from the fit is: ", round(max(rf$results$Accuracy),4)))
+print("Compared to")
+print(paste("The out of sample accuracy: ", round(CM$overall[1],4)))
+```
+
+The fit is very good and the estimation of the accuracy is quite precise. 
+20 out of 20 correct in the prediction quiz.
+
+## Plots
+
+```{r, echo=FALSE}
+print("Variable importance plot")
+plot1<-plot(rfImp, top = 20)
+print(plot1)
+print("Plot of fit")
+plot2<-plot(rf)
+print(plot2)
+```
+
+end
